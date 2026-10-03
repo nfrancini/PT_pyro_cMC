@@ -1,0 +1,31 @@
+size 2
+
+iStart 1
+
+T_min 0.1
+T_max 0.3
+
+heis 0.0000000000000
+ising 8.6568542494924
+pseudodipolar 7.6568542494924
+DM 3.4142135623731
+
+single_ion 0.0
+
+iSet 10
+iPT 10
+
+iTerm 100
+
+iMis 10000
+iDec 10
+
+iMinimize 0
+
+iSave 0
+iBackup 5000
+
+filenames_file aux/filenames_2.txt
+log_file log/log_2.txt
+
+random_seed 247

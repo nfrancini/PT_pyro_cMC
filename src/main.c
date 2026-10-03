@@ -1,0 +1,141 @@
+// Programma per l'implementazione di un Metropolis MC
+// per il modello Kitaev-Heisenberg esteso
+// H = J_H \sum_<i,j> S_i * S_ j +
+//    + K \sum <i,j>_gamma S_i^gamma S_j^gamma
+//    + Gamma (S_i^alpha S_j^beta + S_i^beta S_j^alpha) +
+//    + Gamma' (S_i^gamma S_j^alpha + S_i^alpha S_j^gamma + S_i^gamma S_j^beta + S_i^beta S_j^gamma)
+
+// Viene anche incluse un termine ad anello
+// La somma sulla placchetta eagonale coinvolge i siti
+// (ijklmn) in senso antiorario
+// H_ring = J_{ring}/6 \sum_{hexagonal plaquette} [2(S_i * S_j)(S_k * S_l)(S_m * S_n) +
+//          -6(S_i * S_k)(S_j * S_l)(S_m * S_n)
+//          +3(S_i * S_l)(S_j * S_k)(S_m * S_n)
+//          +3(S_i * S_k)(S_j * S_m)(S_l * S_n)
+//          -(S_i * S_l)(S_j * S_m)(S_k * S_n) + cyclic permutations of (ijklmn)]
+
+// Infine sono aggiunti due termini di rottura
+// esplicita di simmetria tra i due sottoreticoli
+// L'interazione è di tipo Heisenberg
+// ma coinvolge solo spin appartenenti allo stesso sottoreticolo.
+// Ogni sottoreticolo è un reticolo triangolare
+// in cui ogni spin ha sei "primi vicini"
+// appartenenti allo stesso sottoreticolo.
+// H_A = J2A \sum_<<i,j>>_A (S_i * S_j)
+// H_B = J2B \sum_<<i,j>>_B (S_i * S_j)
+
+// Per studiare il modello viene implementato un
+// algoritmo di replica exchange (parallel tempering)
+// alternando update Metropolis su singole repliche
+// e scambi tra le repliche.
+// Sono fissate temperatura minima, sufficientemente bassa
+// e la temperatura massima, sufficientemente alta.
+// Il numero di repliche è dato da sqrt(N) dove N è il numero di siti.
+// Le posizioni della temperatura sono scelte in modo tale da
+// restituire un'accettanza di circa 0.3-0.4 tra le varie repliche.
+
+// Il programma è parallelizzato sfruttando
+// openMP, sui cicli di update Metropolis.
+
+// Per il generatore random devo creare tanti
+// generatori indipendenti quanti il nuemro di threads
+// disponibili. Per fare ciò sfrutto jump.
+// Per sfruttare il jump con il dsfmt devo calcolare
+// il giusto polinomio sfruttando
+// ./calc-jump JUMP-SIZE poly.19937.txt
+// usando un JUMP-SIZE=2**128 ottengo un polinomio:
+// jump polynomial:
+//f4dfa6c62049d0776e0bf6f1e953f3aa38abb113df86be024eab3773ad5f2b82ead936022e656dff7e562691c59dd5f7d2566b78d9669002503c4ddb1888a49f32333f515e6c60c4ecd221078ec6f26f0a90f4875067ca1f399a99775037adf905566e2c7e6b42131420f8f04f112c92621c9b1502f2a8aefad6c667904af62f0d55e02d396902d3b89450103c5ce5fe0408d97cbb864861b49e4e42048ff3310b48faac55095a7f422eea4aade752f947f947c6be0a0c665bdea099246ab9eff658ea8ca468bf49d0227748367878de06d7bd86ea6708fcac6e252f5f00f04309b2aac3036b64afb39d990427c6c9f03477cc7e935c43c0e61bc161db8eb15516eee8cb377ecbc1849207990fb6778721b29bfe0d89bfda1b3772fa5b0b1f7ec3daf36052032285898c6f6396f55010c31f8201b7e2e51d94f920bfe57684c5415cc342cb39a0045d9793d13cf8646096daeb8bb9bfc20a90de8f2426da8733267a9b9674f32154e8f84a9932223a2ca3c787d0b66df6675febbdfcba2f9cef09c621c57e11098b3289c77397aaae8b104642ffe0c4b75598efbc53745984d68b4d6656cae299ae2be55217a9a02b009ca7be32f47fbe434bce4914a34d0c9b0085bede9b8a99319c34660d66f0124b5a7714c4bf3cbfec3ee43ed817087168bad80133bebaeeb68cf7929a24d1bb3de831a8340d220906ab04159cf94b21d5ee813bd7c80f10f01b43052af530917513b169254c25d6fcfe6cb420d6ce92f54886ef6eaf9a5ba35e893ff593834d05ddf28899e42d729c7df3d21ef036020789739366f0c11ec52ff92a0bfd8ba69508e27b20fabb8217bd36b90e5aa918159ac87913bc7b46c04e366c23c92807fbe9c6a407e6a4db0b4fc23c3b6c706b5ca058fe8c190f849f18d16d6b48b5ed760eb202fd566291a799420b9654e08b8118bcbfead8e9dd2fdb9b053e9bdfb665285c78718f726d0b3d6c37e116428ec9ac9db2637259e4e8d6402bbada46c6bdb03985e19a82e9b4e57de1b025a3cb1f850beae7e8da9941655825bce0e89d536b6ee9064865b1a85c185e9fc9cb7f435de13d44773c00eed442a286e4ab807e3cab4dc3441d1b7d2af693812ae8b39652bb8c835fc895d13d6da93541afeadeee450475c29f3b2dfa8ef1c1e2547463b2cc2f0ff7a42ac4dd35e25c4fa030d2d2766fbe9f2d04c1304671747bace2f7dd55142bfa60f8cbc968bfc3d7a342152dc684a0fb5a32c0962a62b5220ac0f72add9d8b84d6cc76b97d03245e01fc8da3414a49bb4075d3488f29b56dc42ba69e3b58529448c943ecfd98b3784a39d0b8609a8fb945e757f4569f53bd2cf80f7f638acf5b67fe9c560a3b7b0cf7e0398f31aa8b03cf9c62b24296b6d8596b694469a02686c38daa16a1ef86e012d61a2f7de1693a5c00b3685175caec3c67146477eba54830f1d546cb18a553779aa46adb4f2010e33f3def847c7d89b51a8462b227605f6c920fd558a6daf64bc98682e508ae960c0c571870e603ba1fce0c13d53176f353fd319959e13db93eae1359f06e3dd4767c04f824cf34ec7bf8f60161ba1a615db82852eca9e3869afa711ab9a090660b0dc6cfbea310dda77e02310fbaeacd2636f975838c2dbcdbe9ac2cd85cee28f5e3f0c73abf62f9fa02cd79a7606b7ba855db68a07848b057c3aaf38f1a70086e14616f6f88305a1f9ce6b41378a620d4db3e0e7e1d421590dccaeff86212e232eeb5eb8a8d33a8c9b25ae88f3a7bd5032b4efa68f8af3186a02ffcbf5456f12beccace94c81c360cc4a0dcc642b59f991eec68c59af78139ca60b96d6a18e9535f8995e89bd2cf6a0aef3acffd33d1c0c1b79b66414a91d9f65b2b4ec65844b96f725d2b4b0c309f3eb9d714e9dd939bbdfd85ce8fb43679aeab13f6c29549949503c9466dbd337c4cdde46d6eacd15f21f4d8fdeaa627a47884c88a9c85f0b731d271a8ea7cb9e04a4a149c23c10f56b3a0476dc77a999d6e4f813e4b0f805e2a693e2ae4ae0ecc423c9ba5d17b42e691abf83784a582f2b1fd85d1e0a27ba38a500963568b2450363d2c5e3f7b8ba3e5b56e4e9f745a3a710bf2ae233c303068c532ce78ff031e6ab28b705dd94d7db4500909edb5626b8c9bd5ff4f0b4741388f0b91563ee516934c013e901572cba005ac5c535f4f107903be9af7b2793dfb61b5070facbe71eefe1b5600f975c8c38c3a2350d78beadfecb78e981164ae8bc866e732972d3ceef4aac68e15861f9b881d9b51b4edece150bc124b07645defb4202ef5d0e0962db98cae6ed459561c93c74c20bd64362e4f4fffc389a6cd80514604ff22eecc10c9cbc7981d19a8102b24146354c463107c9dc070e29e70df3578022acf72289ef071ab9f9402a544d0399f1b1e5f206b6d46d445f6d612a490e72918e00c853eda8493bef511149e80c9ab56e8b4b8cba3987249f77d060e61760e5792ac321c987c03c2606e9393a7970212992cdbd16448078d5039d4c2c3199714f53278f4f7b1d2e514cf95bdfc078b8bb0db659cb2c3f5cc02890ea84f05d414c88d2db9e9f8455659b9fa6254405317245fa070d6970cafb4dadb2522b490a5c8e02fe973a8cdbfbfbdbfb01535099ffba3d3896bc4d1189fc570c3e6fdc6469265b8da912772e75dd62ab71be507f700d56cac5e68fd6b57ec166168ab5258a69625c142a5b1b3519f94be1bde5e51d3bd8ea0c12d5af2fe4615b1b7bd4a96628a4fabc65925ff09718f63bbebaad98f89bd9543a27b3ff3b5d8bfa89f941a5eb8cc005ccd4a705190e1c9dc6a9f4264e5ee658520a4438e92de854bffc39f8dc7dfbb5de4f14ba63ea16a37d14a7b4610f95b6cffd55e4679b29cedbdf20e7bd16da822fad910c359ee3a68e48aae6e769b0e291d5d3aa3e2ca9d8d23abe8a1d5349f4991e9300852cc0befb20c2fc0d169306b260763344024f8092cbcc24c6807363e9fc548a30d5faab3a94b2af0782a2942be80c45d8b0587efd587394ef33c33022436e285806ddffdd32fe36345c3c38ed8d680abeb7a028b44ee6f94d060a14c7019bb6af1f1b5f0a562957d19826d8cc216f9b908c989ccd5415e3525dfe9422ffb5b50b7cc3083dc325544751e5683535d7439d3da2b0bb73bea551dd99e04e0e793804f4774eb6b1daf781d9caa5128274e599e847862fe309027813d3e4eda0bbeb7201856a5c5d8370e44dabff0bb229c723ba0a6bcf29c44536147de11b7835991018100105bd4329217f7386903fe8e7363cd7b3e893244e245e0a187467664c05b0be1fd429722b9b9a5e3198147fad72776e8a63aab9054fa9d259af0198d088d71d132e6068676a8e9ebb0f616b51ee34aac39c2c2221c71124017270d75ff4a048363c389e04e9b440ad2032a381ac2cfc54f409caa791e65ee4f5d6cd035008f219b88a803a7382ae447bf65a3df2176b25b3b7b67dabe34decd9a1384dc7a003916ca8fbcb29b3ad6fd8eac5bbbaa3bdfa6c6a3ad9427c4f3ed79fea26e14c8ce5fa3b4f82c5f7b6d2125916753a7b92ce9b46d45
+
+// Dal momento che il polinomio è fissato, fisso anche l'esponente
+// del generatore di numeri casuali.
+// AL MOMENTO DELLA COMPILAZIONE È OBBLIGATORIO USARE LA FLAG
+// -DDSFMT_MEXP=19937
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+// Includo l'header
+#include "../head/header.h"
+
+// Variabili globali
+int (*nn)[NUM_NEAREST_NEIGHBOR];
+double (*rr)[NUM_NEAREST_NEIGHBOR][NUM_COMPS];
+double acc_min=0.2;
+double acc_max=0.5;
+clock_t start, end;
+double local_x[NUM_SUBLATTICES][NUM_COMPS];
+double local_y[NUM_SUBLATTICES][NUM_COMPS];
+double local_z[NUM_SUBLATTICES][NUM_COMPS];
+double DM_vectors[NUM_SUBLATTICES][NUM_SUBLATTICES][NUM_COMPS];
+double vv[NUM_SUBLATTICES][NUM_COMPS][NUM_COMPS][NUM_COMPS];
+
+// Main
+int main(int argc, char const *argv[]) {
+  // Vettori ausiliari
+  int *tempToreplica;
+  int *exchAcc;
+  // Parametri di sistema
+  param_t myParams;
+  // Repliche come array di singole catene
+  chain_t *myChains;
+  // Osservabili come array di singole strutture, una per ogni temperatura
+  obs_t *myObs;
+  // Array di strutture per salvare il nome dei file
+  // L'indice su cui scorre è un indice di tempreatura
+  // quindi quando scrivo e leggo le tempèerature
+  // devo usare tempToreplica per accedere a myChains
+  filenames_t *myFilenames;
+  // Stato di rank_max generatori random, uno per thread
+  dsfmt_t *dsfmt;
+  // Replica a temperatura zero
+  chain_t zero_T_replica;
+
+  // Avvio il conteggio per il tempo di esecuzione
+  start=clock();
+  // Inizializzo il sistema in tre step
+  // 1. Leggo il file di input
+  // 2. Alloco la memoria necessaria
+  // 3. PBC
+  // 4. Generatore random
+  // 5. Inizializzazione myChains
+  //      Reticolo inizializzato a seconda di iStart
+  //      Temperature
+  //      acc e count azzerati
+  dsfmt = initialize_system(&myChains, &myParams, &myObs, &myFilenames, &tempToreplica, &exchAcc, dsfmt, argv[1], &zero_T_replica);
+  // Se iStart=0 oppure iStart=1 devo
+  // aggiustare le temperature e le
+  // accettanze
+  // Altrimenti vado direttamente alle misure
+  if((myParams.iStart==0)||(myParams.iStart==1)){
+    // Inzializzo i parametri di accettanza
+    // per l'update Metropolis e le temperature
+    // con l'obiettivo di un'accettanza piatta su
+    // tutto l'intervallo di temperature
+    set_temperatures(myChains, &myParams, dsfmt, tempToreplica, exchAcc);
+    // Una volta fissate le temperature aggiusto
+    // le accettanze del Metropolis
+    set_acceptances(myChains, &myParams, dsfmt, tempToreplica);
+    // Creo i nomi dei file per salvare la  configurazione
+    set_filenames(myChains, &myParams, myFilenames, tempToreplica);
+    // Cicli a vuoto per termalizzare il sistema
+    burn_in(myChains, &myParams, dsfmt, tempToreplica, exchAcc);
+    // Salvo la configurazione
+    write_Status(&myParams, myChains, myFilenames, tempToreplica);
+  }
+  // Ciclo di misurazioni
+  // per prima cosa resetto
+  // il conteggio degli swap effettuati
+  get_measures(myChains, &myParams, myFilenames, myObs, tempToreplica, exchAcc, dsfmt);
+  // Minimizzaizone iterativa della configurazione a temperatura più bassa
+  // Questo corrisponde a spingere la configurazione a T minore
+  // verso T=0.
+  if(myParams.iMinimize==1){
+    push_to_zero(&myParams, &myChains[tempToreplica[myParams.n_temp-1]], &zero_T_replica);
+  }
+  // Scrivo il file di log
+  write_Log(&myParams, myChains, tempToreplica, exchAcc);
+  // Dealloco la memoria
+  deallocation(&myChains, &myParams, &myObs, &myFilenames, &tempToreplica, &exchAcc, dsfmt, &zero_T_replica);
+  return(EXIT_SUCCESS);
+}
